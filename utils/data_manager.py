@@ -24,7 +24,7 @@ class DataManager():
 		for ind, q in enumerate(mat[0]):
 			self._utilmat['queries'][q] = ind
 		for i in range(len(mat[1::])):
-			self._utilmat['users'][mat[i+1][0]] = [int(x) if x else 0 for x in mat[i+1][1::]]
+			self._utilmat['users'][mat[i+1][0]] = [int(x) if x else -1 for x in mat[i+1][1::]]
 
 
 	def __init__(self, io_manager):
@@ -34,7 +34,7 @@ class DataManager():
 		# print(self._users)
 		# print(self._films)
 		# print(self._queries)
-		# print(self._utilmat)
+		print(self._utilmat)
 
 
 	def get_answer_set(self, query_id):
