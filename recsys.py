@@ -2,19 +2,34 @@ import os
 import sys
 import itertools
 import numpy as np
+import time
 
 from utils.io_manager import IOManager
 from utils.data_manager import DataManager
+from utils.generator import MovieGenerator
 
 class Recommendator:
 
     _io = None
     _data = None
 
+    CONVERT_MOVIES   = False
+    GENERATE_QUERIES = False
+    GENERATE_VOTES  = True
+
     def __init__(self):
         dir_path = os.path.dirname(os.path.realpath(__file__))
         self._io = IOManager(dir_path + "/datasets/")
         self._data = DataManager(self._io)
+
+        if(self.CONVERT_MOVIES or self.GENERATE_QUERIES or self.GENERATE_VOTES):
+            generator = MovieGenerator(self._io, self._data)
+            if(self.CONVERT_MOVIES):   generator.convert_movies(source="movies_metadata.csv", dest="films.csv")
+            if(self.GENERATE_QUERIES): generator.generate_queries(dest="queries.csv")
+            self._data.read_inputs()
+            if(self.GENERATE_VOTES):  generator.generate_utilmat(dest="utilmat.csv")
+
+        self._data.read_utilmat()
 
     # Computes feedback values for a single user, using affinity matrix between queries
     def _using_affinity_matrix(self):
