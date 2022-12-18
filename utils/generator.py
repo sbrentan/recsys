@@ -1,6 +1,8 @@
 import csv
 import sys
 import random
+import pandas as pd
+import numpy as np
 sys.stdout.reconfigure(encoding='utf-8')
 
 class MovieGenerator:
@@ -52,15 +54,24 @@ class MovieGenerator:
 				companies = [comp['name'] for comp in eval(lcompanies)]
 				year = 1980 if not date else int(date.split("-")[0])
 
+				new_count = 0
+				for x in [10, 100, 1000]:
+					if(count < x):
+						break
+					new_count = x
+				count = new_count
+
 				if(for_output):
-					genres_str = "~".join([self._all_genres[i] for i in genres])
-					companies_str = "~".join([c for c in companies])
+					# genres_str = "~".join([self._all_genres[i] for i in genres])
+					# companies_str = "~".join([c for c in companies])
+					genres_str = "" if len(genres)==0 else self._all_genres[genres[random.randint(0, len(genres)-1)]]
+					companies_str = "" if len(companies)==0 else companies[random.randint(0, len(companies)-1)]
 					new_movie = ["f"+str(ind), genres_str, companies_str, str(year), title, str(count)]
 					new_movie = [x.replace(",",'') for x in new_movie]
 					movies.append(','.join(new_movie))
 				else:
 					movies.append([genres, companies, year, title, count])
-		columns = ["genres", "companies", "year", "title", "count"]
+		columns = ["genre", "company", "year", "title", "count"]
 		return columns, movies
 
 
@@ -70,16 +81,16 @@ class MovieGenerator:
 		g_dislikes = set()
 		for i in range(len(self._all_genres)):
 			rand = random.randint(0, 99)
-			if(rand < 15): g_likes.add(i)
-			elif(rand < 20): g_dislikes.add(i)
+			if(rand < 15): g_likes.add(self._all_genres[i])
+			elif(rand < 20): g_dislikes.add(self._all_genres[i])
 
 		# ==================== COMPANIES ==================== #
-		c_likes = -1
-		c_dislikes = -1
+		c_likes = None
+		c_dislikes = None
 		if(random.randint(0,99) < 5):
-			c_likes = random.randint(0,len(self._top_companies)-1)
+			c_likes = self._top_companies[random.randint(0,len(self._top_companies)-1)]
 		if(random.randint(0,99) < 2):
-			c_dislikes = random.randint(0,len(self._top_companies)-1)
+			c_dislikes = self._top_companies[random.randint(0,len(self._top_companies)-1)]
 
 		# ==================== LANGUAGES ==================== #
 		first_lang = True
@@ -125,22 +136,24 @@ class MovieGenerator:
 		# print(user)
 		# print()
 		# print(movie)
-		min_len = min(len(user[0]), len(movie["genres"]))
+		# min_len = min(len(user[0]), len(movie["genre"]))
 		genre_l_vote = 0
-		if(min_len > 0):
-			genre_l_vote = int(len(set(user[0]) & set(movie["genres"])) * 100 / min_len)
+		if(len(user[0]) > 0):
+			# genre_l_vote = int(len(set(user[0]) & set(movie["genres"])) * 100 / min_len)
+			genre_l_vote = 100 if movie['genre'] in user[0] else 0
 
-		min_len = min(len(user[1]), len(movie["genres"]))
+		# min_len = min(len(user[1]), len(movie["genres"]))
 		genre_d_vote = 0
-		if(min_len > 0):
-			genre_d_vote = int(len(set(user[1]) & set(movie["genres"])) * 100 / min_len)
+		if(len(user[1]) > 0):
+			# genre_d_vote = int(len(set(user[1]) & set(movie["genres"])) * 100 / min_len)
+			genre_d_vote = 100 if movie['genre'] in user[1] else 0
 
 		company_l = 0
-		if(int(user[2]) >= 0 and user[2] in movie["companies"]):
+		if(user[2] and user[2] == movie["company"]):
 			company_l = 100
 
 		company_d = 0
-		if(int(user[3]) >= 0 and user[3] in movie["companies"]):
+		if(user[3] and user[3] == movie["company"]):
 			company_d = 100
 
 		years_modes = [2000, 1990, 1950, 1900]
@@ -155,8 +168,8 @@ class MovieGenerator:
 			pop = 100
 
 		votes = [genre_l_vote, 100 - genre_d_vote, year, pop]
-		if(user[2] >= 0): votes.append(company_l)
-		if(user[3] >= 0): votes.append(100 - company_d)
+		if(user[2]): votes.append(company_l)
+		if(user[3]): votes.append(100 - company_d)
 		
 		vote = int(sum(votes) / len(votes))
 		final_vote = max(0, min(100, vote + random.randint(-10, 10)))
@@ -166,19 +179,23 @@ class MovieGenerator:
 
 	def _simulate_query_vote(self, user, query):
 		# print(user, query)
-		aset = self._data.get_answer_set(query)
+		# aset = self._data.get_answer_set(query)
+		aset = self._data.get_as_from_panda(query=query)
 		# print(aset, end="\n\n")
 		# asdf
 		sums = 0
-		for m in aset:
-			vote = self._simulate_user_vote(user, self._data.films[m])
-			sums += vote
-		final_vote = int(sums / len(aset)) if len(aset) > 0 else 0
+		final_vote = 0
+		if(not aset.empty):
+			for index, m in aset.iterrows():
+				# vote = self._simulate_user_vote(user, self._data.films[m])
+				vote = self._simulate_user_vote(user, m)
+				sums += vote
+			final_vote = int(sums / len(aset)) if len(aset) > 0 else 0
 		# print(final_vote)
 		return final_vote
 		 
 
-	def convert_movies(self, source="movies_metadata.csv", dest="films.csv"):
+	def convert_movies(self, source="movies_metadata.csv", dest="films3.csv"):
 		columns, movies = self._read_full_dataset(name=source, for_output = True)
 		movies.insert(0, ",".join(columns))
 		self._io.output(dest, movies)
@@ -187,43 +204,95 @@ class MovieGenerator:
 
 
 	def generate_queries(self, size=1000, dest="queries.csv"):
+		self._data.read_pd_inputs()
+
+		df = self._data.movies_df
+		df['count'] = pd.to_numeric(df["count"], errors='coerce')
+		sorted_df = self._data.movies_df.sort_values(by=['count'], ascending = False)
+		# print()
+		# print(sorted_df.iloc[0])
+
+		# g = [abs(int(random.gauss(-20, 10000))) for x in range(1000)]
+		# print(min(g), max(g))
+
+		# sys.exit(0)
+
 		rows = []
+		present_queries = {}
 		for i in range(size):
+			print(i)
 			empty = True
 			while empty:
-				genres = []
-				for g in range(len(self._all_genres)):
-					rand = random.randint(0, 99)
-					if(rand < 10):
-						empty = False
-						genres.append(g)
 
-				company = None
-				rand = random.randint(0, 99)
-				if(rand < 20):
-					empty = False
-					company = random.randint(0, len(self._top_companies) - 1)
+				insert_title 	= False
+				insert_genre 	= False
+				insert_company 	= False
+				insert_year 	= False
+				insert_count 	= False
 
-				year = None
-				rand = random.randint(0, 99)
-				if rand < 30:
-					empty = False
-					y = 0
-					while y > 2017 or y < 1900:
-						y = int(random.gauss(1990, 20))
-					year = y
 
-			count = None
-			rand = random.randint(0, 99)
-			if rand < 30:
-				empty = False
-				count = [0, 10, 100, 1000, 10000][random.randint(0, 4)]
+				insert_title = random.randint(0, 99) < 1
+				insert_genre = random.randint(0, 99) < 60
+				insert_company = random.randint(0, 99) < 20
+				insert_year = random.randint(0, 99) < 60
+				insert_count = random.randint(0, 99) < 20
 
-			row = ["genres="+self._all_genres[g] for g in genres]
-			if company != None: row.append("companies="+self._top_companies[company])
-			if year != None: row.append("year="+str(year))
-			if count != None: row.append("count="+str(count))
-			row.insert(0, "q"+str(i+1))
+				title, genre, company, year, count = None, None, None, None, None
+
+				movie_id = None
+				if(insert_title):
+					movie_id = abs(int(random.gauss(-20, 10000)))
+					if(movie_id >= df.shape[0]):
+						insert_title = False
+					else:
+						title = df['title'][movie_id]
+				if(insert_genre):
+					if(insert_title): 
+						if(df.iloc[movie_id]['genre']):
+							insert_genre = False
+						else:
+							genre = df.iloc[movie_id]['genre']
+					else: genre = self._all_genres[random.randint(0, len(self._all_genres) - 1)]
+				if(insert_company):
+					if(insert_title):
+						if(df.iloc[movie_id]['company']):
+							insert_company = False
+						else:
+							company = df.iloc[movie_id]['company']
+					else: company = self._top_companies[random.randint(0, len(self._top_companies) - 1)]
+				if(insert_year):
+					if(insert_title): year = df.iloc[movie_id]['year']
+					else:
+						y = 0
+						while y > 2017 or y < 1900:
+							y = int(random.gauss(1990, 20))
+						year = y
+				if(insert_count):
+					if(insert_title): count = df.iloc[movie_id]['count']
+					else: count = [0, 10, 100, 1000][random.randint(0, 3)]
+
+				empty = True not in [insert_title, insert_genre, insert_company, insert_year, insert_count]
+				if(not empty):
+					hash_set = hash(frozenset([genre, company, year, title, count]))
+					if(hash_set in present_queries):
+						empty = True
+					else:
+						row = []
+						if insert_genre: row.append("genre="+genre)
+						if insert_company: row.append("company="+company)
+						if insert_year: row.append("year="+str(year))
+						if insert_title: row.append("title="+str(title))
+						if insert_count: row.append("count="+str(count))
+						row.insert(0, "q"+str(i+1))
+
+						aset = self._data.get_as_from_panda(query=row)
+						if(aset.empty):
+							empty = True
+						else:
+							present_queries[hash_set] = 1
+
+
+			
 			rows.append(",".join(row))
 		self._io.output("queries.csv", rows)
 
@@ -231,8 +300,12 @@ class MovieGenerator:
 	def generate_utilmat(self, size=10, dest="utilmat.csv"):
 		# self._generate_queries()
 		# asedf
-		_, movies = self._read_full_dataset()
-		movies.sort(key = lambda x: x[4], reverse=True)
+
+
+		# _, movies = self._read_full_dataset()
+		# movies.sort(key = lambda x: x[4], reverse=True)
+
+		self._data.read_pd_inputs()
 
 
 		# user has likes and dislikes
@@ -247,6 +320,7 @@ class MovieGenerator:
 		#	a lot of movies from same companies/popularity/year
 
 		users = []
+		starting = 0
 		for i in range(size):
 
 			# [g_likes, g_dislikes, c_likes, c_dislikes, years_mode, pop_mode]
@@ -259,27 +333,32 @@ class MovieGenerator:
 				# movie_id = abs(int(random.gauss(0, 12000)))
 				# while query_id in votes:
 				# 	movie_id = abs(int(random.gauss(0, 12000)))
-				query_id = "q"+str(random.randint(1, len(self._data.queries)))
+
+				# query_id = "q"+str(random.randint(1, len(self._data.queries)))
+				query_id = random.randint(0, len(self._data.queries) - 1)
 				# print(query_id)
 				while query_id in votes:
-					query_id = "q"+str(random.randint(1, len(self._data.queries)))
-				vote = self._simulate_query_vote(user, query_id)
+					# query_id = "q"+str(random.randint(1, len(self._data.queries)))
+					query_id = random.randint(0, len(self._data.queries) - 1)
+				vote = self._simulate_query_vote(user, self._data.queries[query_id])
 				votes[query_id] = str(vote)
 				# print(vote)
 
 			# arr = [abs(int(random.gauss(0, 12000))) for x in range(1000)]
 			# print(self._data.queries)
 			# print(votes)
-			new_user = [str(0) if q not in votes else votes[q] for q in self._data.queries]
-			new_user.insert(0, "u"+str(i+1))
+			# print(self._data.queries)
+			new_user = ["" if self._data.queries_ids[q[0]] not in votes else votes[self._data.queries_ids[q[0]]] for q in self._data.queries]
+			new_user.insert(0, "u"+str(starting+i+1))
 			# print(new_user)
 			users.append(",".join(new_user))
+			print(i)
 		# print(users)
 
 
 		self._io.output(dest, users)
 
-		print(users)
+		# print(users)
 		sys.exit(0)
 			
 
