@@ -101,7 +101,7 @@ class DataManager():
 			self._queries_ids[self._queries[i][0]] = i
 
 		# self._utilmat_df = pd.read_csv(self._io.dataset_path + 'utilmat.csv').astype(np.str)
-		self._utilmat_df = pd.read_csv(self._io.dataset_path + 'utilmat2.csv')
+		self._utilmat_df = pd.read_csv(self._io.dataset_path + 'utilmat5.csv')
 		# self._movies_df = pd.read_csv(self._io.dataset_path + 'films.csv').astype(np.str)
 		self._movies_df = pd.read_csv(self._io.dataset_path + 'films.csv')
 		self._movies_ids = {}

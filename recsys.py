@@ -36,7 +36,7 @@ class Recommendator:
             if(self.CONVERT_MOVIES):   generator.convert_movies(source="movies_metadata.csv", dest="films.csv")
             if(self.GENERATE_QUERIES): generator.generate_queries(dest="queries.csv")
             if(not self.SKIP_READINGS): self._data.read_inputs()
-            if(self.GENERATE_VOTES):  generator.generate_utilmat(size=1, dest="utilmat5.csv")
+            if(self.GENERATE_VOTES):  generator.generate_utilmat(size=10000, dest="utilmat5.csv")
         else:
             if(not self.SKIP_READINGS): self._data.read_inputs()
 
@@ -129,16 +129,19 @@ class Recommendator:
 
 
     # Computes top k similar users and get average votes for every user
-    def _using_users_similarity(self):
-        # t = time.time()
-        # cols, mat = self._io.input_csr_matrix('utilmat2.csv')
-        # print("Time to read csr matrix: "+str(round(time.time() - t, 2)))
-        mat = self._data.
+    def _compute_users_clusters(self):
+        t = time.time()
+        cols, mat = self._io.input_csr_matrix('utilmat5.csv')
+        print("Time to read csr matrix: "+str(round(time.time() - t, 3)))
+        #100 -> 10000, 0.016 -> 1.6. 16s to read 100k
+        # mat = self._data.
 
+        t = time.time()
         cossim = CosineSimilarity()
         clusters, empty_clusters = cossim.compute(mat)
 
         mat = mat.todense()
+        print("Time to cossim and todense: "+str(round(time.time() - t, 3)))
 
         t = time.time()
         for c, values in clusters.items():
@@ -161,7 +164,7 @@ class Recommendator:
             # print(counter)
             # asdf
             # result = round(sum(col_values) / len(col_values.nonzero()[0]), 2)
-        print("Time to compute utilmat values: " + str(round(time.time() - t, 2)))
+        print("Time to compute utilmat values: " + str(round(time.time() - t, 3)))
 
 
     def _as_test(self):
@@ -336,11 +339,15 @@ class Recommendator:
 
 
     def _hybrid(self):
+        t = time.time()
         self._data.read_pd_inputs()
-        q_means = df.mean(axis = 0, skipna = True)
-        u_means = df.mean(axis = 1, skipna = True)
+        print('Time for reading:', round(time.time() - t, 2))
+        # q_means = df.mean(axis = 0, skipna = True)
+        # u_means = df.mean(axis = 1, skipna = True)
 
-        queries_clusters = self._compute_queries_clusters()
+        # queries_clusters = self._compute_queries_clusters()
+        # 3.5s for 10k users
+        users_clusters = self._compute_users_clusters()
 
 
 
@@ -349,7 +356,7 @@ class Recommendator:
 
         # self._using_users_similarity()
 
-        self._using_query_similarity()
+        # self._using_query_similarity()
 
         # self._using_mat_avgs()
 

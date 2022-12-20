@@ -177,10 +177,11 @@ class CosineSimilarity:
 		X = tfidf_transformer.fit_transform(s)
 		matches = self.awesome_cossim_top(X, X.transpose(), 10, 0)
 		print(matches.shape)
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=99590) # for 10000 users
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=10970)
-		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=7132) # for 1000 query_similarity
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=7132) # for 1000 query_similarity
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=1135)
-		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=995) # for 100 users
+		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=995) # for 100 users
 		matches_df = matches_df[matches_df['similarity'] < 0.999]
 		# matches_df = matches_df[matches_df['left_side'] != matches_df['right_side']]
 		result = matches_df.sort_values(['similarity'], ascending=False)
@@ -198,8 +199,8 @@ class CosineSimilarity:
 				empty_clusters.append(i+1)
 		print("Time to compute clusters:", round(time.time() - t, 2))
 
-		print(clusters)
-		print(empty_clusters)
+		# print(clusters)
+		# print(empty_clusters)
 
 		# print(clusters)
 		return clusters, empty_clusters
