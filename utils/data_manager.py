@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from dask import dataframe as ddf
 
 class DataManager():
 
@@ -110,25 +111,39 @@ class DataManager():
 			self._movies_ids[indexes[i]] = i
 
 	def read_test_inputs(self, test):
+		import time
+		t = time.time()
 		_, self._queries = self._io.input(test+"/queries.csv")
 		self._queries_ids = {}
 		for i in range(len(self._queries)):
 			self._queries_ids[self._queries[i][0]] = i
+		print(time.time() - t)
 
-		# self._utilmat_df = pd.read_csv(self._io.dataset_path + 'utilmat.csv').astype(np.str)
 		self._utilmat_df = pd.read_csv(self._io.dataset_path + test + '/utilmat.csv')
-		# self._movies_df = pd.read_csv(self._io.dataset_path + 'films.csv').astype(np.str)
-		self._movies_df = pd.read_csv(self._io.dataset_path + test + '/films.csv')
+
+		# from pyarrow import csv
+		# parseoptions = csv.ParseOptions(header_rows=0)
+		# readoptions = csv.ReadOptions(columns_names=['index']+['q'+str(i+1) for i in range(len(self._queries))])
+		# self._utilmat_df = csv.read_csv(self._io.dataset_path + test + '/utilmat.csv', read_options=readoptions, parse_options=parseoptions)
+		# self._utilmat_df = self._utilmat_df.to_pandas()
+		
+		# self._utilmat_df = ddf.read_csv(self._io.dataset_path + test + '/utilmat.csv')
+		# self._utilmat_df.compute()
+		print(time.time() - t)
+		self._movies_df = pd.read_csv(self._io.dataset_path + test + '/films.csv', encoding='utf-8')
+		print(time.time() - t)
 		self._movies_ids = {}
 		indexes = self._movies_df.index
 		for i in range(len(indexes)):
 			self._movies_ids[indexes[i]] = i
+		print(time.time() - t)
 
-		self._utilmat_df = self._utilmat_df.fillna(0)
+		# self._utilmat_df = self._utilmat_df.fillna(0)
 		self._user_ids = {}
 		indexes = self._utilmat_df.index
-		for i in range(len(indexes)):
-			self._user_ids[indexes[i]] = i
+		for i in range(len(self._utilmat_df)):
+			self._user_ids['u'+str(i+1)] = i
+		print(time.time() - t)
 
 
 
@@ -139,13 +154,17 @@ class DataManager():
 		panda = self._movies_df
 		cols = self._movies_df.columns
 		is_int = True
+		# lookup = None
+		# empty = True
 		for cond in query[1::]:
 			col, val = cond.split("=")
 			if(is_int):
 				try: val = int(val)
 				except: is_int = False
-			# print(col, val)
+			# lookup = (panda[col] == val) if empty else ((lookup) & (panda[col] == val))
+			# empty = False
 			panda = panda[panda[col] == val]
+		# panda = panda[lookup]
 		return panda
 
 
@@ -289,6 +308,10 @@ class DataManager():
 	@property
 	def utilmat_df(self):
 		return self._utilmat_df
+
+	@property
+	def utilmat_df_T(self):
+		return self._utilmat_df_T
 	
 	@property
 	def user_ids(self):

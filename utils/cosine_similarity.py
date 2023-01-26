@@ -67,7 +67,8 @@ class CosineSimilarity:
 		right_side = np.empty([nr_matches], dtype=object)
 		similarity = np.zeros(nr_matches)
 		
-		for index in range(0, nr_matches):
+		# print(len(sparserows), nr_matches)
+		for index in range(0, min(nr_matches, len(sparserows))):
 			left_side[index] = name_vector[sparserows[index]]
 			right_side[index] = name_vector[sparsecols[index]]
 			similarity[index] = sparse_matrix.data[index]
@@ -173,8 +174,6 @@ class CosineSimilarity:
 		if(number_of_users == 0):
 			return {}, []
 
-		print(s.shape)
-		# asd
 
 		group_size = 10
 		tfidf_transformer = TfidfTransformer()
@@ -182,13 +181,17 @@ class CosineSimilarity:
 		matches = self.awesome_cossim_top(X, X.transpose(), group_size, 0)
 		print(matches.shape)
 
-		top_users = min(number_of_users*10, pow(number_of_users, 2))
-		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=top_users)
+		top_users = s.nonzero()[0][-1] + 1
+		# print(s)
+		# print(top_users)
+		top_users = min(top_users*10, pow(top_users, 2))
+		# print(top_users, s.shape)
+		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=top_users)
 
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=298870) # for 30000 users
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=99590) # for 10000 users
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=10000) # for 1000 users
-		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=7132) # for 1000 query_similarity
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=7132) # for 1000 query_similarity
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=1135)
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=995) # for 100 users
 		matches_df = matches_df[matches_df['similarity'] < 0.999]

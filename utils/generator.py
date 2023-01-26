@@ -3,6 +3,8 @@ import sys
 import random
 import pandas as pd
 import numpy as np
+import time
+
 sys.stdout.reconfigure(encoding='utf-8')
 
 class MovieGenerator:
@@ -131,6 +133,128 @@ class MovieGenerator:
 		return [g_likes, g_dislikes, c_likes, c_dislikes, years_mode, pop_mode]
 
 
+	def _efficient_users_queries_votes(self, users, queries, movies, dir_path, test, exact_vote = True):
+		#mat1: m_users x p_properties
+		#mat2: p_properties x n_films
+
+
+		years_modes = [2000, 1990, 1950, 1900]
+		pop_modes = [1000, 100, 0]
+		lil = [self._all_genres, self._all_genres, self._top_companies, self._top_companies, [0,1,2,3], [0,1,2]]
+		# lil = [self._all_genres, self._all_genres, self._top_companies, self._top_companies, self._years, self._votes, self._langs, self._vcounts]
+		# len_properties = sum([len(x) for x in lil])
+		properties = {}
+		# prop_ids = {}
+		counter = 0
+		companies_ids = {}
+		for c in range(len(self._top_companies)):
+			companies_ids[self._top_companies[c]] = str(c)
+		for ind, l in enumerate(lil):
+			for i in l:
+				# properties[counter] = i
+				x = i
+				if(ind == 2 or ind == 3):
+					x = companies_ids[i]
+				properties[str(ind)+'_'+str(x)] = counter
+				counter += 1
+		properties['x_genre'] = counter
+		properties['x_company'] = counter+1
+		properties['x_year'] = counter+2
+		properties['x_pop'] = counter+3
+		# len(properties)
+
+		user_index = ['u'+str(i+1) for i in range(len(users))]
+		query_index = ['q'+str(i+1) for i in range(len(queries))]
+		mat1 = pd.DataFrame(np.zeros((len(users), len(properties))), index=range(len(users)), columns=list(properties.keys()))
+		mat1.loc[:, '1_'+self._all_genres[0]:'1_'+self._all_genres[-1]] = 1
+		mat1.loc[[ind for ind, x in enumerate(users) if x[3] != None], '3_0':'3_'+str(len(self._top_companies)-1)] = 1
+		mat1.loc[:, ['x_year', 'x_pop', 'x_genre']] = 1
+		for ind, u in enumerate(users):
+			for genre in u[0]:
+				mat1.loc[ind, '0_'+genre] = 1
+			for genre in u[1]:
+				mat1.loc[ind, '1_'+genre] = 0
+			if(u[2]):
+				mat1.loc[ind, '2_'+companies_ids[u[2]]] = 1
+			if(u[3]):
+				mat1.loc[ind, '3_'+companies_ids[u[3]]] = 0
+				mat1.loc[ind, 'x_company'] = 1
+			for indx, x in enumerate(u[4::]):
+				if(x != None):
+					mat1.loc[ind, str(indx+4)+'_'+str(lil[indx+4][x])] = 1
+
+		mat2 = pd.DataFrame(np.zeros((len(movies), len(properties))), index=range(len(movies)), columns=list(properties.keys()))
+		for ind in range(len(movies)):
+			m = movies.iloc[ind]
+			if(m['genre'] in self._all_genres):
+				mat2.loc[ind, '0_'+m['genre']] = 1
+				mat2.loc[ind, '1_'+m['genre']] = 1
+			if(m['company'] in companies_ids):
+				mat2.loc[ind, '2_'+companies_ids[m['company']]] = 1
+				mat2.loc[ind, '3_'+companies_ids[m['company']]] = 1
+			if(pd.isna(m['company'])):
+				mat2.loc[ind, 'x_company'] = 1
+			if(pd.isna(m['genre'])):
+				mat2.loc[ind, 'x_genre'] = 1
+			if(pd.isna(m['year'])):
+				mat2.loc[ind, 'x_year'] = 1
+			if(pd.isna(m['count']) and m['count'] != 0):
+				mat2.loc[ind, 'x_pop'] = 1
+
+			years = [ind for ind, x in enumerate(years_modes) if int(m['year']) >= x]
+			for y in years: mat2.loc[ind, '4_'+str(y)] = 1
+			pops = [ind for ind, x in enumerate(pop_modes) if int(m['count']) >= x]
+			for p in pops: mat2.loc[ind, '5_'+str(p)] = 1
+
+		# print(mat2)
+
+		t = time.time()
+		sum_mat = mat1.dot(mat2.T)
+		print('Sum mat computed in '+str(time.time() - t))
+		# print(sum_mat)
+
+		max_votes = pd.DataFrame(np.zeros(sum_mat.shape), index=mat1.index, columns=mat2.index)
+		max_votes.loc[:, :] = 4
+		for i in range(len(users)):
+			if(users[i][2]): max_votes.loc[i, :] += 1
+			if(users[i][3]): max_votes.loc[i, :] += 1
+
+		film_votes = ((sum_mat * 100) / max_votes).astype(int)
+
+		film_votes += 20
+		film_votes[film_votes > 100] = 100
+
+		# max_votes.columns = movies.index
+		# sum_mat.columns = movies.index
+		# film_votes.columns = movies.index
+		# print(max_votes)
+
+
+		# print(film_votes)
+
+		film_votes.index = user_index
+		film_votes.columns = movies.index
+		# print('ao')
+		t = time.time()
+		query_votes = pd.DataFrame(np.zeros((len(users), len(queries))), index=user_index, columns=query_index)
+		for ind in range(len(queries)):
+			print(ind, len(queries))
+			aset = self._data.get_as_from_panda(query=queries[ind])
+			query_votes.loc[:, query_index[ind]] = film_votes.loc[:, aset.index].mean(axis = 1)
+
+		print(query_votes.astype(int))
+		print(time.time() - t)
+
+		# self._simulate_query_vote(users[0], queries[2], True)
+
+		query_votes.to_csv(dir_path + '/datasets/' + test+'/real_votes.csv')
+
+
+		return query_votes
+
+
+
+
 	def _simulate_user_vote(self, user, movie, exact_vote=False):
 
 		# print(user)
@@ -188,13 +312,17 @@ class MovieGenerator:
 		# asdf
 		sums = 0
 		final_vote = 0
+		votes = []
 		if(not aset.empty):
 			for index, m in aset.iterrows():
 				# vote = self._simulate_user_vote(user, self._data.films[m])
 				vote = self._simulate_user_vote(user, m, exact_vote)
+				print('vote '+str(index)+": -> "+str(vote))
+				votes.append(vote)
 				sums += vote
 			final_vote = int(sums / len(aset)) if len(aset) > 0 else 0
-		# print(final_vote)
+			print('final_vote', final_vote)
+		print(votes)
 		return final_vote
 		 
 

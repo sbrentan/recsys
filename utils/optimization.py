@@ -1,4 +1,4 @@
-from annoy import AnnoyIndex
+# from annoy import AnnoyIndex
 import random
 import os
 import csv
@@ -163,4 +163,5 @@ class Optimization:
 		# print(len(empty_certificates), empty_certificates)
 
 		# print(list({ u : sum([len(i) for ind, i in enumerate(lclusters) if uv[ind] != '0'*nsplits]) } for u, uv in user_clusters.items()))
+
 
