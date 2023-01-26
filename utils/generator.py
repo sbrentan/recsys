@@ -131,7 +131,7 @@ class MovieGenerator:
 		return [g_likes, g_dislikes, c_likes, c_dislikes, years_mode, pop_mode]
 
 
-	def _simulate_user_vote(self, user, movie):
+	def _simulate_user_vote(self, user, movie, exact_vote=False):
 
 		# print(user)
 		# print()
@@ -172,12 +172,15 @@ class MovieGenerator:
 		if(user[3]): votes.append(100 - company_d)
 		
 		vote = int(sum(votes) / len(votes))
-		final_vote = max(0, min(100, vote + random.randint(-10, 10)))
+		if(exact_vote):
+			final_vote = max(0, min(100, vote))
+		else:
+			final_vote = max(0, min(100, vote + random.randint(-10, 10)))
 		final_vote = min(final_vote+20, 100)
 		return final_vote
 
 
-	def _simulate_query_vote(self, user, query):
+	def _simulate_query_vote(self, user, query, exact_vote=False):
 		# print(user, query)
 		# aset = self._data.get_answer_set(query)
 		aset = self._data.get_as_from_panda(query=query)
@@ -188,7 +191,7 @@ class MovieGenerator:
 		if(not aset.empty):
 			for index, m in aset.iterrows():
 				# vote = self._simulate_user_vote(user, self._data.films[m])
-				vote = self._simulate_user_vote(user, m)
+				vote = self._simulate_user_vote(user, m, exact_vote)
 				sums += vote
 			final_vote = int(sums / len(aset)) if len(aset) > 0 else 0
 		# print(final_vote)

@@ -8,16 +8,23 @@ import dask.dataframe
 
 from scipy.sparse import csr_matrix
 from scipy.sparse import lil_matrix
+from sklearn.decomposition import TruncatedSVD
 
 from utils.io_manager import IOManager
 from utils.generator import MovieGenerator
 from utils.data_manager import DataManager
+from utils.optimization import Optimization
 from utils.cosine_similarity import CosineSimilarity
+
+import warnings
+warnings.filterwarnings("ignore", category=RuntimeWarning) 
 
 class Recommendator:
 
     _io = None
     _data = None
+
+    TEST = 'test_2'
 
     CONVERT_MOVIES   = False
     GENERATE_QUERIES = False
@@ -31,8 +38,8 @@ class Recommendator:
         self._data = DataManager(self._io)
 
         t = time.time()
+        self._generator = generator = MovieGenerator(self._io, self._data)
         if(self.CONVERT_MOVIES or self.GENERATE_QUERIES or self.GENERATE_VOTES):
-            generator = MovieGenerator(self._io, self._data)
             if(self.CONVERT_MOVIES):   generator.convert_movies(source="movies_metadata.csv", dest="films.csv")
             if(self.GENERATE_QUERIES): generator.generate_queries(dest="queries.csv")
             if(not self.SKIP_READINGS): self._data.read_inputs()
@@ -76,7 +83,6 @@ class Recommendator:
                     else:
                         q['score'] = 0
         print([(qid, q['score']) for qid, q in self._data.queries.items()])
-
 
     # Computes feedback values for every user, using correspondances between queries feedbacks
     def _using_correspondance_matrix(self):
@@ -127,12 +133,11 @@ class Recommendator:
                         flist[empty_fb[0]] = int(avg_fb / avg_count)
         print(self._data.utilmat)
 
-
     # Computes top k similar users and get average votes for every user
-    def _compute_users_clusters(self):
-        t = time.time()
-        cols, mat = self._io.input_csr_matrix('utilmat5.csv')
-        print("Time to read csr matrix: "+str(round(time.time() - t, 3)))
+    def _compute_users_clusters(self, mat):
+        # t = time.time()
+        # cols, mat = self._io.input_csr_matrix(self.TEST+'/utilmat.csv')
+        # print("Time to read csr matrix: "+str(round(time.time() - t, 3)))
         #100 -> 10000, 0.016 -> 1.6. 16s to read 100k
         # mat = self._data.
 
@@ -141,20 +146,33 @@ class Recommendator:
         clusters, empty_clusters = cossim.compute(mat)
 
         mat = mat.todense()
-        print("Time to cossim and todense: "+str(round(time.time() - t, 3)))
+        # print("Time to cossim and todense: "+str(round(time.time() - t, 3)))
 
         t = time.time()
+        results, similarities = [], []
         for c, values in clusters.items():
             # calculate average votes for the clustered users
             a = np.empty((len(clusters[0]), mat.shape[1]))
             counter = np.zeros((1, mat.shape[1]))
-            for ind, userid in enumerate(values):
+            avg_sim, sim_count = 0, 0
+            for ind, (userid, sim) in enumerate(values.items()):
                 b = mat[userid-1]
                 counter += b.astype(bool)
                 a[ind] = b
+                # avg_sim += sim
+                avg_sim = max(avg_sim, sim)
+                sim_count += 1
+            avg_sim = round(avg_sim, 2)
+            # avg_sim = round(avg_sim/sim_count, 2) if sim_count != 0 else 0
 
             summed_values = a.sum(axis=0)
-            result  = summed_values / counter
+            result  = (summed_values / counter).round(2)
+            results.append(result)
+            similarities.append(avg_sim)
+            # print(counter)
+            # print(summed_values)
+            # print(result)
+            # asdf
             # sys.exit(0)
             # counter = [len(a[:, x].nonzero()[0]) for x in range(mat.shape[1])]
 
@@ -164,8 +182,8 @@ class Recommendator:
             # print(counter)
             # asdf
             # result = round(sum(col_values) / len(col_values.nonzero()[0]), 2)
-        print("Time to compute utilmat values: " + str(round(time.time() - t, 3)))
-
+        # print("Time to compute utilmat values: " + str(round(time.time() - t, 3)))
+        return results, similarities
 
     def _as_test(self):
         # print(self._data.queries)
@@ -218,12 +236,23 @@ class Recommendator:
         # asdf
         print(c)
         # print(len(shingles))
+
+
+        # mat = pd.DataFrame(shingles)
+        # svd = TruncatedSVD(n_components=1000)
+        # svd.fit(mat)
+        # utilmat = svd.transform(mat)
+
+        # sparse_utilmat = utilmat.astype(pd.SparseDtype("float64",0)).sparse.to_coo().tocsr()
+        # cossim = CosineSimilarity()
+        # clusters, empty = cossim.compute(sparse_utilmat)
+
+
         cossim = CosineSimilarity()
         clusters, empty = cossim.compute(csr_matrix(shingles, dtype=np.int32))
 
         return clusters, empty
         # time.sleep(10)
-
 
     def _compute_query_value(qid, feedback):
         # 537: [320, 81, 40, 75, 257]
@@ -277,10 +306,6 @@ class Recommendator:
 
         # --- COLD START REMOVED THANKS TO USAGE OF 'POPULARITY'
 
-
-
-
-
     def _using_mat_avgs(self):
         self._data.read_pd_inputs()
         df = self._data.utilmat_df
@@ -303,8 +328,6 @@ class Recommendator:
         # small_df = df.iloc[:5,:5]
         # print(small_df)
         # print(small_df.mean(axis = 0, skipna = True))
-
-
     def _using_lsh(self):
         self._data.read_pd_inputs()
         from utils.lsh_similarity import LSHSimilarity
@@ -337,17 +360,99 @@ class Recommendator:
         sys.exit(0)
 
 
+    def _hybrid_standardization(self):
+        pass
 
-    def _hybrid(self):
-        t = time.time()
-        self._data.read_pd_inputs()
-        print('Time for reading:', round(time.time() - t, 2))
-        # q_means = df.mean(axis = 0, skipna = True)
-        # u_means = df.mean(axis = 1, skipna = True)
+    def _hybrid_collaborative(self):
+
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        opt = Optimization(dir_path, self.TEST)
+        lclusters = opt.optimize_mat(mat = self._data.utilmat_df, ncertificates = 10, nsplits = 10)
+        # print(lclusters)
+        # print()
+        # print(lclusters[0])
+        # asdf
+
+        votes = np.zeros(self._data.utilmat_df.shape)
+        count = np.zeros(self._data.utilmat_df.shape)
+
+        sparse_utilmat = self._data.utilmat_df.astype(pd.SparseDtype("float64",0)).sparse.to_coo().tocsr()
+        skip = True
+        for cert, users in lclusters[0].items():
+            if(skip):
+                skip = False
+                continue
+            s = set(users)
+            for i in range(len(lclusters)-1):
+                s.update(lclusters[i][cert])
+
+            ids = [self._data.user_ids[uid] for uid in s]
+            mat = sparse_utilmat[ids]
+
+            results, similarities = self._compute_users_clusters(mat)
+            for i in range(len(results)):
+                # print(len(votes[ids[i]]), len(results[i]), results[i][0])
+                votes[ids[i]] += results[i][0]
+                count[ids[i]] += 1
+        votes = np.around(votes/count, 0)
+        # print(votes)
+        return votes
+
+
 
         # queries_clusters = self._compute_queries_clusters()
         # 3.5s for 10k users
-        users_clusters = self._compute_users_clusters()
+        # users_clusters = self._compute_users_clusters()
+        # print(users_clusters)
+
+    def _hybrid_content_based(self, q_means, bias, mm):
+
+        mat_means = mm.copy()
+
+        clusters, empty = self._compute_queries_clusters()
+        
+        counter = pd.DataFrame(np.ones(self._data.utilmat_df.shape), index=self._data.user_ids, columns=self._data.queries_ids)
+        for c, values in clusters.items():
+            for ind, (queryid, sim) in enumerate(values.items()):
+                mat_means.iloc[:, queryid-1] += bias.iloc[:, c] + mm.iloc[:, queryid-1]
+                counter.iloc[:, queryid-1] += 1
+
+        mat_means = (mat_means / counter).round(2)
+
+        return mat_means
+
+
+
+    def _hybrid(self):
+        # ==================       READING       ================== #
+        t = time.time()
+        self._data.read_test_inputs(self.TEST)
+        print('Time for reading:', round(time.time() - t, 2))
+
+        # ==================   STANDARDIZATION   ================== #
+        q_means = self._data.utilmat_df.mean(axis = 0, skipna = True)
+        u_means = self._data.utilmat_df.mean(axis = 1, skipna = True)
+        arr = np.zeros(self._data.utilmat_df.shape)
+        q_means_list = q_means.tolist()
+        for i in range(len(arr)):
+            arr[i] = q_means_list
+        mat_means = pd.DataFrame(arr, index=self._data.user_ids, columns=self._data.queries_ids)
+        mat_means.set_index(list(self._data.queries_ids.keys()))
+        bias = (self._data.utilmat_df - mat_means) * self._data.utilmat_df.astype(bool).astype(int)
+
+
+        # ==================    COLLABORATIVE    ================== #
+        # For users
+        # mat1 = self._hybrid_collaborative()
+
+
+        # ==================    CONTENT-BASED    ================== #
+        mat2 = self._hybrid_content_based(q_means, bias, mat_means)
+        # print(mat2)
+        # For query-films shingles
+
+        return mat2
+
 
 
 
@@ -362,7 +467,7 @@ class Recommendator:
 
         # self._using_lsh()
 
-        self._hybrid()
+        return self._hybrid()
 
 
         # CONTENT BASED
@@ -422,13 +527,53 @@ class Recommendator:
         print()
         pass
 
+
+    def evaluate(self, mat):
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        f = open(dir_path + '/datasets/' + self.TEST+'/definitions.csv', "r")
+        line = f.readline()
+        definitions = []
+        while(line):
+            definitions.append(eval(line))
+            line = f.readline()
+        f.close()
+
+        print(mat)
+        real_votes = np.zeros(mat.shape)
+        for row in range(len(mat)):
+            print(row, len(mat))
+            for col in range(len(mat.iloc[row])):
+                if(mat.iloc[row, col] != np.nan):
+                    real_vote = self._generator._simulate_query_vote(definitions[row], self._data.queries[col], True)
+                    real_votes[row][col] = real_vote
+        f = open(dir_path + '/datasets/' + self.TEST+'/real_votes.csv', "w")
+        for row in real_votes:
+            f.write(", ".join(map(lambda x: str(x), row)) + '\n')
+        f.close()
+
+
         
 
 if __name__ == "__main__":
+
+    # t = time.time()
+    # from utils.optimization import Optimization
+
+    # dir_path = os.path.dirname(os.path.realpath(__file__))
+    # opt = Optimization(dir_path)
+
+    # print()
+    # print(time.time() - t)
+    # sys.exit(0)
+
+
     t = time.time()
     recommendator = Recommendator()
-    recommendator.recommend()
+    mat = recommendator.recommend()
     print(time.time() - t)
+
+    print()
+    recommendator.evaluate(mat)
 
 
 # WHAT HAPPENS WHEN N. QUERIES < N. UTILMAT

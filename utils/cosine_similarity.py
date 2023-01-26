@@ -170,34 +170,48 @@ class CosineSimilarity:
 		# number_of_users = s.shape[0] # for 100 users
 		number_of_users = s.shape[0] # for 100 queries
 
+		if(number_of_users == 0):
+			return {}, []
+
 		print(s.shape)
 		# asd
-		
+
+		group_size = 10
 		tfidf_transformer = TfidfTransformer()
 		X = tfidf_transformer.fit_transform(s)
-		matches = self.awesome_cossim_top(X, X.transpose(), 10, 0)
+		matches = self.awesome_cossim_top(X, X.transpose(), group_size, 0)
 		print(matches.shape)
+
+		top_users = min(number_of_users*10, pow(number_of_users, 2))
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=top_users)
+
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=298870) # for 30000 users
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=99590) # for 10000 users
-		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=10970)
-		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=7132) # for 1000 query_similarity
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=10000) # for 1000 users
+		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=7132) # for 1000 query_similarity
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=1135)
-		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=995) # for 100 users
+		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=995) # for 100 users
 		matches_df = matches_df[matches_df['similarity'] < 0.999]
 		# matches_df = matches_df[matches_df['left_side'] != matches_df['right_side']]
 		result = matches_df.sort_values(['similarity'], ascending=False)
-		print("Time to compute cosine similarity:", round(time.time() - t, 2))
+		# print("Time to compute cosine similarity:", round(time.time() - t, 2))
 
 		t = time.time()
+
 		groups = result.groupby('left_side')
 		clusters = {}
 		empty_clusters = []
 		for i in range(number_of_users):
 			try:
-				clusters[i] = list(groups.get_group(i+1)['right_side'])
+				sim_users = groups.get_group(i+1)
+				clusters[i] = { list(sim_users['right_side'])[g] : list(sim_users['similarity'])[g] 
+											for g in range(len(sim_users['right_side']))}
+				# print(clusters[i])
+				# clusters[i] = list(groups.get_group(i+1)['right_side'])
 			except:
-				clusters[i] = []
+				clusters[i] = {}
 				empty_clusters.append(i+1)
-		print("Time to compute clusters:", round(time.time() - t, 2))
+		# print("Time to compute clusters:", round(time.time() - t, 2))
 
 		# print(clusters)
 		# print(empty_clusters)

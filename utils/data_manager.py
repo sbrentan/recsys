@@ -109,6 +109,27 @@ class DataManager():
 		for i in range(len(indexes)):
 			self._movies_ids[indexes[i]] = i
 
+	def read_test_inputs(self, test):
+		_, self._queries = self._io.input(test+"/queries.csv")
+		self._queries_ids = {}
+		for i in range(len(self._queries)):
+			self._queries_ids[self._queries[i][0]] = i
+
+		# self._utilmat_df = pd.read_csv(self._io.dataset_path + 'utilmat.csv').astype(np.str)
+		self._utilmat_df = pd.read_csv(self._io.dataset_path + test + '/utilmat.csv')
+		# self._movies_df = pd.read_csv(self._io.dataset_path + 'films.csv').astype(np.str)
+		self._movies_df = pd.read_csv(self._io.dataset_path + test + '/films.csv')
+		self._movies_ids = {}
+		indexes = self._movies_df.index
+		for i in range(len(indexes)):
+			self._movies_ids[indexes[i]] = i
+
+		self._utilmat_df = self._utilmat_df.fillna(0)
+		self._user_ids = {}
+		indexes = self._utilmat_df.index
+		for i in range(len(indexes)):
+			self._user_ids[indexes[i]] = i
+
 
 
 	def get_as_from_panda(self, query_id=0, query=None):
@@ -269,6 +290,11 @@ class DataManager():
 	def utilmat_df(self):
 		return self._utilmat_df
 	
+	@property
+	def user_ids(self):
+		return self._user_ids
+	
+
 
 	@property
 	def movies_df(self):
