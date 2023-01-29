@@ -24,13 +24,15 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 # pyarrow -----
 # unidecode ------
 
-# asdf
 class Recommendator:
 
     _io = None
     _data = None
 
-    TEST = 'test_3'
+    _mat1 = None
+    _mat2 = None
+
+    TEST = 'test_1'
 
     CONVERT_MOVIES   = False
     GENERATE_QUERIES = False
@@ -58,7 +60,7 @@ class Recommendator:
         # sys.exit(0)
 
 
-    def _hierarchical_clustering(self, utilmat, mat_means, threshold = 0, nclusters = None):
+    def _hierarchical_clustering(self, utilmat, threshold = 0, nclusters = None):
         # utilmat = np.floor(utilmat / mat_means).round(0).astype(np.int8)
 
         # REQUIRES UTILMAT ALREADY .fillna(0)
@@ -91,8 +93,10 @@ class Recommendator:
                 final_clusters[clust['cert']] = mat.index
 
         check = { x: len(mat) for x, mat in final_clusters.items() }
-        print(sum([x for c, x in check.items()]), len(check))
-        print(check)
+        # print(sum([x for c, x in check.items()]), len(check))
+        # print(check)
+        # print(final_clusters)
+
         return final_clusters
 
 
@@ -106,6 +110,10 @@ class Recommendator:
         t = time.time()
         cossim = CosineSimilarity()
         clusters, empty_clusters = cossim.compute(mat)
+
+        # print(clusters)
+
+        return clusters
 
         mat = mat.todense()
         # print("Time to cossim and todense: "+str(round(time.time() - t, 3)))
@@ -207,7 +215,7 @@ class Recommendator:
     def _hybrid_standardization(self):
         pass
 
-    def _hybrid_collaborative(self, mat_means):
+    def _hybrid_collaborative(self, bias, mat_means):
 
         dir_path = os.path.dirname(os.path.realpath(__file__))
         # opt = Optimization(dir_path, self.TEST)
@@ -215,24 +223,39 @@ class Recommendator:
         
         threshold = int(len(self._data.utilmat_df) / 10)
         nclusters = int(sqrt(len(self._data.utilmat_df)))
-        print(threshold, nclusters)
-        lclusters = self._hierarchical_clustering(self._data.utilmat_df, mat_means, threshold = threshold, nclusters = nclusters)
+        # print(threshold, nclusters)
+        lclusters = self._hierarchical_clustering(self._data.utilmat_df, threshold = threshold, nclusters = nclusters)
 
         votes = np.zeros(self._data.utilmat_df.shape)
         count = np.zeros(self._data.utilmat_df.shape)
 
         sparse_utilmat = self._data.utilmat_df.astype(pd.SparseDtype("float64",0)).sparse.to_coo().tocsr()
+        final_mat = pd.DataFrame(np.zeros(self._data.utilmat_df.shape), index=self._data.user_ids, columns=self._data.queries_ids)
+        # print(final_mat)
+        # asdf
         for cert, users in lclusters.items():
             ids = [self._data.user_ids[uid] for uid in users]
             mat = sparse_utilmat[ids]
 
-            results, similarities = self._compute_users_clusters(mat)
-            for i in range(len(results)):
-                votes[ids[i]] += results[i][0]
-                count[ids[i]] += 1
-        votes = np.around(votes/count, 0)
+            # results, similarities = self._compute_users_clusters(mat)
+            # for i in range(len(results)):
+            #     print(results[i])
+            #     votes[ids[i]] += results[i][0]
+            #     count[ids[i]] += 1
+            # print(mat)
+            # asd
+            clusters = self._compute_users_clusters(mat)
+            for uid, cusers in clusters.items():
+                keys = list(map(lambda x: ids[x], list(cusers.keys())))
+                m = bias.iloc[keys, :].mean(axis=0, skipna=True).fillna(0)
+                final_mat.iloc[ids[uid], :] = m + mat_means.iloc[ids[uid], :]
+            
+        # print(final_mat)
+        return final_mat
+
+        # votes = np.around(votes/count, 0)
         # print(votes)
-        return pd.DataFrame(votes, index=self._data.user_ids, columns=self._data.queries_ids)
+        # return pd.DataFrame(votes, index=self._data.user_ids, columns=self._data.queries_ids)
 
 
 
@@ -269,69 +292,95 @@ class Recommendator:
 
 
 
-    def _hybrid(self):
-        # ==================       READING       ================== #
-        t = time.time()
-        self._data.read_test_inputs(self.TEST)
-        print('Time for reading:', round(time.time() - t, 2))
+    def _hybrid(self, cr = 0.1):
+        if(cr == 0):
+            # ==================       READING       ================== #
+            t = time.time()
+            self._data.read_test_inputs(self.TEST)
+            print('Time for reading:', round(time.time() - t, 2))
 
-        # ==================   STANDARDIZATION   ================== #
-        q_means = self._data.utilmat_df.mean(axis = 0, skipna = True)
-        u_means = self._data.utilmat_df.mean(axis = 1, skipna = True)
+            # ==================   STANDARDIZATION   ================== #
+            q_means = self._data.utilmat_df.mean(axis = 0, skipna = True)
+            u_means = self._data.utilmat_df.mean(axis = 1, skipna = True)
 
-        # self._data._utilmat_df_T = self._data.utilmat_df_T.fillna(0)
-        shape = (len(self._data.user_ids), len(self._data.queries))
-        arr = np.zeros(shape)
-        # arr = np.zeros(self._data.utilmat_df_T.shape)
-        q_means_list = q_means.tolist()
-        for i in range(len(arr)):
-            arr[i] = q_means_list
-            # arr[i] = q_means_list[i]
-        mat_means = pd.DataFrame(arr, index=self._data.user_ids, columns=self._data.queries_ids)
-        # mat_means = pd.DataFrame(arr, index=self._data.queries_ids, columns=self._data.user_ids)
+            # self._data._utilmat_df_T = self._data.utilmat_df_T.fillna(0)
+            shape = (len(self._data.user_ids), len(self._data.queries))
+            arr = np.zeros(shape)
+            arr2 = np.zeros(shape)
+            # arr = np.zeros(self._data.utilmat_df_T.shape)
+            q_means_list = q_means.tolist()
+            u_means_list = u_means.tolist()
+            for i in range(len(arr)):
+                arr[i] = q_means_list
+                arr2[i] = [u_means_list[i]] * len(self._data.queries)
+                # arr[i] = q_means_list[i]
+            mat_means = pd.DataFrame(arr, index=self._data.user_ids, columns=self._data.queries_ids)
+            mat_means2 = pd.DataFrame(arr2, index=self._data.user_ids, columns=self._data.queries_ids)
+            # mat_means = pd.DataFrame(arr, index=self._data.queries_ids, columns=self._data.user_ids)
 
-        # bias = (self._data.utilmat_df - mat_means) * self._data.utilmat_df.astype(bool).astype(int)
-        bias = self._data.utilmat_df - mat_means
+            # bias = (self._data.utilmat_df - mat_means) * self._data.utilmat_df.astype(bool).astype(int)
+            bias = self._data.utilmat_df - mat_means
+            bias2 = self._data.utilmat_df - mat_means2
 
-        # bias = (self._data.utilmat_df_T - mat_means) * self._data.utilmat_df_T.astype(bool).astype(int)
+            # print(bias2)
+            # print(mat_means2)
+            # zxgbn
 
-
-        self._data._utilmat_df = self._data.utilmat_df.fillna(0)
-
-
-        # ==================    COLLABORATIVE    ================== #
-        # For users
-        t = time.time()
-        mat1 = self._hybrid_collaborative(mat_means).fillna(0)
-        print('Time to compute collaborative:', round(time.time() - t, 2))
-
+            # bias = (self._data.utilmat_df_T - mat_means) * self._data.utilmat_df_T.astype(bool).astype(int)
 
 
-        # ==================    CONTENT-BASED    ================== #
-        # For query-films shingles
-        t = time.time()
-        mat2 = self._hybrid_content_based(bias, mat_means)
-        print('Time to compute content-based:', round(time.time() - t, 2))
+            self._data._utilmat_df = self._data.utilmat_df.fillna(0)
+
+
+            # ==================    COLLABORATIVE    ================== #
+            # For users
+            t = time.time()
+            mat1 = self._hybrid_collaborative(bias2, mat_means2).fillna(0)
+            print('Time to compute collaborative:', round(time.time() - t, 2))
+
+
+
+            # ==================    CONTENT-BASED    ================== #
+            # For query-films shingles
+            t = time.time()
+            mat2 = self._hybrid_content_based(bias, mat_means)
+            print('Time to compute content-based:', round(time.time() - t, 2))
+            # print(mat2)
+
+            mat1[mat1 < 1] = 1
+            mat1[mat1 > 100] = 100
+            mat2[mat2 < 1] = 1
+            mat2[mat2 > 100] = 100
+            self._mat1 = mat1
+            self._mat2 = mat2
+        else:
+            mat1 = self._mat1
+            mat2 = self._mat2
+
+
+        collaborative_ratio = cr
+        # mat1_bool = mat1.astype(bool).astype(int)
+        # mat1_ones = pd.DataFrame(np.ones(mat1_bool.shape), index=self._data.user_ids, columns=self._data.queries_ids)
+        final_mat = (mat1 * collaborative_ratio + mat2 * (1 - collaborative_ratio)).round(0)
+        final_mat = (1 - self._data.utilmat_df.astype(bool)) * final_mat + self._data.utilmat_df
+        # final_mat = (mat1 * collaborative_ratio + mat2 * (mat1_ones - (mat1_bool * collaborative_ratio))).round(0)
+
+        # print((mat1_bool * collaborative_ratio))
+        # print((mat1_ones - (mat1_bool * collaborative_ratio)))
+
+        # print('mat1')
+        # print(mat1)
+        # print(((mat1 < 0).any()).any())
+        # print(((mat1 > 100).any()).any())
+
+        # print('mat2')
         # print(mat2)
+        # print(((mat2 < 0).any()).any())
+        # print(((mat2 > 100).any()).any())
 
 
-        collaborative_ratio = 0.1
-        mat1_bool = mat1.astype(bool).astype(int)
-        mat1_ones = pd.DataFrame(np.ones(mat1_bool.shape), index=self._data.user_ids, columns=self._data.queries_ids)
-        final_mat = (mat1 * collaborative_ratio + mat2 * (mat1_ones - (mat1_bool * collaborative_ratio))).round(0)
-
-        print((mat1_bool * collaborative_ratio))
-        print((mat1_ones - (mat1_bool * collaborative_ratio)))
-
-        print('mat1')
-        print(mat1)
-
-        print('mat2')
-        print(mat2)
-
-
-        print('final_mat')
-        print(final_mat)
+        # print('final_mat')
+        # print(final_mat)
 
         # asdf
         return final_mat
@@ -340,7 +389,7 @@ class Recommendator:
 
 
 
-    def recommend(self):
+    def recommend(self, cr):
 
         # self._using_users_similarity()
 
@@ -350,7 +399,7 @@ class Recommendator:
 
         # self._using_lsh()
 
-        return self._hybrid()
+        return self._hybrid(cr)
 
 
         # CONTENT BASED
@@ -414,18 +463,9 @@ class Recommendator:
     def evaluate(self, mat):
         dir_path = os.path.dirname(os.path.realpath(__file__))
 
-        print(mat)
-        if(mat):
-            real_votes = pd.read_csv(dir_path + '/datasets/' + self.TEST+'/real_votes.csv', header=None)
-            real_votes.index = ['u'+str(i+1) for i in range(real_votes.shape[0])]
-            real_votes.columns = ['q'+str(i+1) for i in range(real_votes.shape[1])]
+        # print(mat)
 
-            print('real_votes')
-            print(real_votes)
-            print((mat - real_votes).abs())
-            print((mat - real_votes).abs().stack().mean())
-        else:
-
+        if False:
             f = open(dir_path + '/datasets/' + self.TEST+'/definitions.csv', "r", encoding='utf-8')
             line = f.readline()
             definitions = []
@@ -433,28 +473,75 @@ class Recommendator:
                 definitions.append(eval(line))
                 line = f.readline()
             f.close()
-            self._data.read_test_inputs(self.TEST)
-            self._generator._efficient_users_queries_votes(definitions, self._data.queries, self._data.movies_df, dir_path, self.TEST)
+            if False: self._data.read_test_inputs(self.TEST)
+            mat = self._generator._efficient_users_queries_votes(definitions, self._data.queries, self._data.movies_df, dir_path, self.TEST)
             asdf
-            print('Finished reading inputs')
-            real_votes = np.zeros((len(definitions), len(self._data.queries)))
-            print(real_votes.shape)
-            limit = 999
-            for row in range(len(real_votes)):
-                print(row, len(real_votes))
-                for col in range(len(real_votes[row])):
-                    # if(mat.iloc[row, col] != np.nan):
-                    # print(self._data.queries[col])
-                    real_vote = self._generator._simulate_query_vote(definitions[row], self._data.queries[col], True)
-                    real_votes[row][col] = real_vote
-                if(limit != None and row == limit):
-                    break
-            f = open(dir_path + '/datasets/' + self.TEST+'/real_votes.csv', "w")
-            for ind, row in enumerate(real_votes):
-                f.write(", ".join(map(lambda x: str(x), row)) + '\n')
-                if(limit != None and ind == limit):
-                    break
-            f.close()
+        if False: return
+
+        
+        # print('Reading real_votes')
+        real_votes = pd.read_csv(dir_path + '/datasets/' + self.TEST+'/real_votes.csv', index_col=0)
+        # real_votes = pd.read_csv(dir_path + '/datasets/' + self.TEST+'/real_votes.csv', header=None)
+        # print(real_votes.shape)
+        # asd
+        real_votes.index = ['u'+str(i+1) for i in range(real_votes.shape[0])]
+        real_votes.columns = ['q'+str(i+1) for i in range(real_votes.shape[1])]
+
+        real_votes = real_votes.astype(int)
+
+        # print('real_votes')
+        # print(mat)
+        # print(real_votes)
+        # print('-------')
+        # print(((mat > 100).any()).any())
+        # print(((real_votes > 100).any()).any())
+        # print('-------')
+        # print(((mat < 0).any()).any())
+        # print(((real_votes < 0).any()).any())
+        # print('-------')
+        # print((mat - real_votes).abs())
+        bool_mat = self._data.utilmat_df.astype(bool)
+        mat[bool_mat] = np.nan
+        real_votes[bool_mat] = np.nan
+        result = (mat - real_votes).abs().stack().mean(skipna = True)
+        # print('--------------------------------------------------------------------')
+        # print(self._data.utilmat_df)
+        print(result)
+        # print(real_votes)
+        # print(mat)
+        # print(mat - real_votes)
+        # asdf
+        return result
+
+            # f = open(dir_path + '/datasets/' + self.TEST+'/definitions.csv', "r", encoding='utf-8')
+            # line = f.readline()
+            # definitions = []
+            # while(line):
+            #     definitions.append(eval(line))
+            #     line = f.readline()
+            # f.close()
+            # self._data.read_test_inputs(self.TEST)
+            # self._generator._efficient_users_queries_votes(definitions, self._data.queries, self._data.movies_df, dir_path, self.TEST)
+            # asdf
+            # print('Finished reading inputs')
+            # real_votes = np.zeros((len(definitions), len(self._data.queries)))
+            # print(real_votes.shape)
+            # limit = 999
+            # for row in range(len(real_votes)):
+            #     print(row, len(real_votes))
+            #     for col in range(len(real_votes[row])):
+            #         # if(mat.iloc[row, col] != np.nan):
+            #         # print(self._data.queries[col])
+            #         real_vote = self._generator._simulate_query_vote(definitions[row], self._data.queries[col], True)
+            #         real_votes[row][col] = real_vote
+            #     if(limit != None and row == limit):
+            #         break
+            # f = open(dir_path + '/datasets/' + self.TEST+'/real_votes.csv', "w")
+            # for ind, row in enumerate(real_votes):
+            #     f.write(", ".join(map(lambda x: str(x), row)) + '\n')
+            #     if(limit != None and ind == limit):
+            #         break
+            # f.close()
 
 
         
@@ -472,13 +559,19 @@ if __name__ == "__main__":
     # sys.exit(0)
 
 
-    t = time.time()
+    results = []
     recommendator = Recommendator()
-    # mat = recommendator.recommend()
-    print(time.time() - t)
+    for i in range(11):
+        print("Iteration: ", i)
+        mat = None
+        # t = time.time()
+        mat = recommendator.recommend(i/10)
+        # print(time.time() - t)
 
-    print()
-    recommendator.evaluate(None)
+        print()
+        r = recommendator.evaluate(mat)
+        results.append((i, r))
+    print(results)
 
 
 # WHAT HAPPENS WHEN N. QUERIES < N. UTILMAT

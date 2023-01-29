@@ -186,7 +186,7 @@ class CosineSimilarity:
 		# print(top_users)
 		top_users = min(top_users*10, pow(top_users, 2))
 		# print(top_users, s.shape)
-		matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=top_users)
+		matches_df = self.get_matches_df(matches, [i for i in range(number_of_users)], top=top_users)
 
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=298870) # for 30000 users
 		# matches_df = self.get_matches_df(matches, [i+1 for i in range(number_of_users)], top=99590) # for 10000 users
